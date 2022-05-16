@@ -1,6 +1,6 @@
-# Data-Science-Projects
-My school portfolio of data science projects.  
-
+# My Data Projects Portfolio
+Created by Lindsay Chu.
+ 
 ## Folders
 I categorized my projects based on the software I used. 
 
