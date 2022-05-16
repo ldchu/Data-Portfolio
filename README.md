@@ -17,5 +17,5 @@ I categorized my projects based on the software I used.
 * `Dell Data Hackathon: COVID Impact on Greater Austin`
 
 **SPSS**
-* `MKT372 Final: Health Proclivity Modeling`
-* `MKT360 Final: Behavior-Based Segmentation in the Food Delivery Market`
+* `Proclivity Modeling`
+* `Behavior-Based Segmentation in the Food Delivery Market`
