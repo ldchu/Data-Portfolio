@@ -1,0 +1,88 @@
+-- Lindsay Chu (ldc2368)
+-- Extract Transform Load (ETL) Project
+
+-- Create data warehouse table client_dw to store data from curr and pros tables
+CREATE TABLE client_dw
+(
+    data_source     VARCHAR(4),     
+    client_id       NUMBER,
+    first_name      VARCHAR(50)     NOT NULL,
+    last_name       VARCHAR(50)     NOT NULL,
+    phone           VARCHAR(12)     NOT NULL,
+    email           VARCHAR(50)     NOT NULL,
+    status          VARCHAR(1),
+    CONSTRAINT client_id_cpk PRIMARY KEY(data_source, client_id)
+    );
+    
+    
+-- Create views for current and prospective tables
+CREATE OR REPLACE VIEW curr_user_view
+AS 
+SELECT 'CURR' AS data_source, 
+    user_id, 
+    first_name, 
+    last_name, 
+    SUBSTR(phone_num,1,3) ||'-'|| SUBSTR(phone_num,4,3) ||'-'|| SUBSTR(phone_num,7) AS phone, 
+    email,
+    CC_flag AS status
+FROM curr_user_table;
+
+CREATE OR REPLACE VIEW prospective_view
+AS
+SELECT 'PROS' as data_source, 
+    prospective_id, 
+    pc_first_name AS first_name, 
+    pc_last_name AS last_name, 
+    SUBSTR(phone,2,3) ||'-'|| SUBSTR(phone,6,3) ||'-'|| SUBSTR(phone,10,4) AS phone, 
+    email, 
+    'N' AS status
+FROM prospective_user;
+
+
+-- Create procedure to merge curr and pros information into client_dw
+CREATE OR REPLACE PROCEDURE user_etl_proc
+AS
+BEGIN
+    -- adding records from curr_user_view
+    MERGE INTO client_dw dw
+    USING (SELECT * FROM curr_user_view) cv
+    ON (dw.data_source = cv.data_source AND dw.client_id = cv.user_id)
+    
+    -- if record matches in both tables, update dw with latest information (name, email, status)  
+    WHEN MATCHED THEN
+        UPDATE SET dw.first_name = cv.first_name,
+                    dw.last_name = cv.last_name, 
+                    dw.email = cv.email,
+                    dw.status = cv.status
+    -- if record not in warehouse, insert information as new row
+    WHEN NOT MATCHED THEN
+        INSERT(dw.data_source, dw.client_id, dw.first_name, dw.last_name, dw.phone, dw.email, dw.status) 
+        VALUES(cv.data_source, cv.user_id, cv.first_name, cv.last_name, cv.phone, cv.email, cv.status);
+        
+    COMMIT; 
+    
+    -- adding records from prospective_view
+    MERGE INTO client_dw dw
+    USING (SELECT * FROM prospective_view) pv
+    ON (dw.data_source = pv.data_source AND dw.client_id = pv.prospective_id)
+    
+    WHEN MATCHED THEN
+        UPDATE SET dw.first_name = pv.first_name,
+                    dw.last_name = pv.last_name,
+                    dw.email = pv.email,
+                    dw.status = pv.status
+    WHEN NOT MATCHED THEN
+        INSERT(dw.data_source, dw.client_id, dw.first_name, dw.last_name, dw.phone, dw.email, dw.status) 
+        VALUES(pv.data_source, pv.prospective_id, pv.first_name, pv.last_name, pv.phone, pv.email, pv.status);
+        
+    COMMIT;
+       
+END;
+/
+
+
+
+
+
+
+
