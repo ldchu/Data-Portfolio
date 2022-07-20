@@ -1,0 +1,313 @@
+---
+pdf_document:
+  toc: no
+author: "SDS322E"
+date: ''
+output:
+  html_document: null
+  toc: yes
+  pdf_document: default
+toc_float:
+  collapsed: no
+smooth_scroll: yes
+title: 'Project 2: Data Mining, Classification, Prediction'
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F,
+                      tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
+
+class_diag <- function(score, truth, positive, cutoff=.5){
+  
+  pred <- factor(score>cutoff,levels=c("TRUE","FALSE"))
+  truth <- factor(truth==positive, levels=c("TRUE","FALSE"))
+  
+  tab<-table(truth, pred)
+  acc=sum(diag(tab))/sum(tab)
+  sens=tab[1,1]/rowSums(tab)[1]
+  spec=tab[2,2]/rowSums(tab)[2]
+  ppv=tab[1,1]/colSums(tab)[1]
+  
+  #CALCULATE F1
+  f1=2*(sens*ppv)/(sens+ppv)
+  
+  #CALCULATE EXACT AUC
+  truth<-as.numeric(truth=="TRUE")
+  ord<-order(score, decreasing=TRUE)
+  score <- score[ord]; truth <- truth[ord]
+  TPR=cumsum(truth)/max(1,sum(truth))
+  FPR=cumsum(!truth)/max(1,sum(!truth))
+  dup<-c(score[-1]>=score[-length(score)], FALSE)
+  TPR<-c(0,TPR[!dup],1); FPR<-c(0,FPR[!dup],1)
+  n <- length(TPR)
+  auc<- sum( ((TPR[-1]+TPR[-n])/2) * (FPR[-1]-FPR[-n]) )
+  round(data.frame(acc,sens,spec,ppv,f1,ba=(sens+spec)/2,auc, row.names = "Metrics"),4)
+}
+```
+
+# Mining, Classification, Prediction
+
+## Lindsay Chu
+
+### Introduction 
+
+My dataset, "credit_card_data", comes from Kaggle; it summarizes credit card usage of 8950 unique users based on 18 variables.  Most are fairly straightforward, such as CUSTID, BALANCE, PURCHASES, and CREDIT LIMIT; others are scores from 0-1 and measure frequency, such as BALANCE_FREQUENCY (how often the balance is updated) and CASH_ADVANCE_FREQUENCY (how often payments are made in cash in advance).    
+
+I created the categorical variable, "AT_RISK", which assigns the value "TRUE" to customers whose credit utilization rates are greater than 30%, and "FALSE" otherwise. Credit utilization was calculated by dividing "BALANCE" by "CREDIT LIMIT", and the minimum threshold of 30% was chosen based on external research on "good" versus "poor" credit scores. Consequently, there are 2347 users "at-risk" of low credit scores / default ("TRUE" category), and 2128 users who are not at risk.   
+
+NOTE: I ended up cutting dataset in half (i.e. using the first 4475 rows) because R would not load any visualizations with all 8950 observations.  
+
+```{R}
+library(tidyverse)
+library(dplyr)
+
+# read dataset 
+ccdata <- read_csv("credit_card_data.csv")
+
+glimpse(ccdata)
+
+# tidying data
+
+# select first half of the dataset because R would not load any visualizations with all of the observations.  
+ccdata <- ccdata[1:4475,] %>%
+  # shorten variable names for readability in visualizations 
+  rename(BAL_FREQ = BALANCE_FREQUENCY, 
+         ONEOFF = ONEOFF_PURCHASES,
+         INSTALLMENTS = INSTALLMENTS_PURCHASES,
+         PURCH_FREQ = PURCHASES_FREQUENCY,
+         ONEOFF_FREQ = ONEOFF_PURCHASES_FREQUENCY,
+         INSTALL_FREQ = PURCHASES_INSTALLMENTS_FREQUENCY,
+         CASHADV_FREQ = CASH_ADVANCE_FREQUENCY,
+         MIN_PAY = MINIMUM_PAYMENTS) %>% 
+  
+  # create categorical variable "AT_RISK", which will be used later as the response variable in the Classification section 
+  mutate(CREDIT_UTIL = round(BALANCE / CREDIT_LIMIT, 2),
+         AT_RISK = ifelse(CREDIT_UTIL > 0.30, "TRUE", "FALSE"))
+
+ccdata %>% filter(AT_RISK=="TRUE") %>%
+  summarize(customers_at_risk = n(), not_at_risk = 4475-customers_at_risk)
+
+# check for NA values 
+ccdata %>% summarize_all(function(x)sum(is.na(x)))
+
+# for variables "CREDIT_LIMIT" and "MINIMUM_PAY", replace NA values with mean 
+ccdata$CREDIT_LIMIT[is.na(ccdata$CREDIT_LIMIT)] <- mean(ccdata$CREDIT_LIMIT, na.rm = TRUE)
+ccdata$MIN_PAY[is.na(ccdata$MIN_PAY)] <- mean(ccdata$MIN_PAY, na.rm = TRUE)
+
+```
+
+
+### Cluster Analysis
+
+```{R}
+library(cluster)
+
+pam_dat <- ccdata %>% select(BAL_FREQ, PURCH_FREQ, INSTALL_FREQ, ONEOFF_FREQ, CASHADV_FREQ, MIN_PAY)
+sil_width <- vector()
+for(i in 2:10){
+  pam_fit <- pam(pam_dat, k = i)
+  sil_width[i] <-pam_fit$silinfo$avg.width
+}
+ggplot()+
+  geom_line(aes(x=1:10,y=sil_width))+
+  scale_x_continuous(name="k", breaks=1:10)
+
+# looks like five clusters is best!
+
+pam1 <- pam_dat %>% pam(k=5) 
+pam1$silinfo$avg.width # 0.6275
+
+# cluster visualization
+library(GGally)
+clust <- ccdata %>% pam(k=5) 
+ccdata %>% 
+  select(BAL_FREQ, PURCH_FREQ, INSTALL_FREQ, ONEOFF_FREQ, CASHADV_FREQ, MIN_PAY) %>%
+  mutate(cluster=as.factor(clust$clustering)) %>%
+  ggpairs(columns=1:6, aes(color=cluster, alpha = 0.5),
+          upper = list(continuous = wrap("cor", size = 2.5)))
+
+```
+
+I performed PAM clustering on the following variables: balance frequency, purchase frequency, installment frequency, oneoff frequency, cash advance frequency, and minimum payments. To determine the ideal number of k clusters, I calculated the silhouette width from k=2 to k=10. In my analysis, 5 clusters returned the highest average silhouette width, at 0.63.  This value indicates a reasonable clustering structure.
+
+Subsequently, I used ggpairs() to visualize all pairwise variable combinations and colored them by the 5 cluster assignments. The pair with the highest positive correlation is installment frequency and purchase frequency (corr=0.839), and the pair with the most negative correlation is cash advance frequency and purchase frequency (corr=-0.286). 
+
+
+### Dimensionality Reduction with PCA
+
+```{R}
+# scale data and summarize PCA results 
+ccdata %>% select(BAL_FREQ, PURCH_FREQ, INSTALL_FREQ, ONEOFF_FREQ, CASHADV_FREQ, MIN_PAY) %>% scale %>% princomp -> ccdata_pca
+
+summary(ccdata_pca, loadings=T)
+
+# determine number of PCs to keep 
+eigval <- ccdata_pca$sdev^2
+varprop=round(eigval/sum(eigval), 2)
+
+eigval<-ccdata_pca$sdev^2 
+varprop=round(eigval/sum(eigval), 2) 
+ggplot() + geom_bar(aes(y=varprop, x=1:6), stat="identity") + xlab("") + 
+  geom_text(aes(x=1:6, y=varprop, label=round(varprop, 2)), vjust=1, col="white", size=5) +
+  scale_y_continuous(breaks=seq(0, .5, .1), labels = scales::percent) +
+  scale_x_continuous(breaks=1:6) 
+
+eigval # eigenvalues
+
+# plot scores to show data with respect to 2 PCs
+ccdataf <- data.frame(Customer=ccdata$CUST_ID, PC1=ccdata_pca$scores[,1], PC2=ccdata_pca$scores[,2])
+
+ggplot(ccdataf, aes(PC1, PC2)) + geom_point() 
+
+library(factoextra)
+fviz_pca_biplot(ccdata_pca)
+```
+
+To determine the number of Principal Components (PCs) to keep, I used a scree barplot to analyze the proportion of variance explained by each. Based on the graph, the plot flattens / creates an elbow at around PC2, suggesting that only 2 PCs should be kept.  This is supported by Kaiser's rule, which holds that PCs with eigenvalues > 1 should be kept; PC1 and PC2 have eigenvalues of 2.3135 and 1.2689, respectively, while the others have values below 1. Based on the proportions, PC1 explains about 38.57% of the total variance and PC2 explains 21.15%.  
+
+Each PC's loadings (eigenvectors) indicate the strength and direction of the association between the PC and a particular variable.  PC1 has a loading of 0.635 for purchase_frequency and 0.547 in install_frequency; the positive associations for both indicate that this component contains individuals who make purchases very frequently, both in immediate transactions and in installments. PC2 has fairly large positive loadings for balance frequency and cash in advance frequency, suggesting that individuals in this component tend to update their balances and make advanced payments frequently.     
+
+
+###  Linear Classifier
+
+```{R}
+# logistic regression
+logistic_fit <- glm(AT_RISK == "TRUE" ~ ONEOFF + INSTALLMENTS + CASH_ADVANCE + BAL_FREQ + PURCH_FREQ + ONEOFF_FREQ + INSTALL_FREQ + CASHADV_FREQ + MIN_PAY + PRC_FULL_PAYMENT, data = ccdata, family = "binomial")
+
+log_score <- predict(logistic_fit, type="response")
+
+class_diag(log_score, ccdata$AT_RISK, positive="TRUE")
+# AUC: 0.9435
+
+# report a confusion matrix 
+table(actual = ccdata$AT_RISK, predicted = log_score > .5) %>% addmargins()
+
+TNR <- 1792 / 2128 # 0.842 (Specificity)
+FP <- 1 - TNR       # 0.158 
+TPR <- 2103 / 2347 # 0.896 (Sensitivity / Recall)
+FN <- 1 - TPR       # 0.104
+
+# Positive Predictive Value (PPV) / Precision 
+PPV <- TPR / (TPR + FP)
+PPV #0.850
+
+
+```
+
+```{R}
+# perform k-fold CV on this same model 
+set.seed(1234)
+k=10 
+data <- ccdata[sample(nrow(ccdata)),] #randomly order rows
+folds<-cut(seq(1:nrow(data)),breaks=k,labels=F) #create folds
+diags<-NULL
+
+for(i in 1:k){
+  ## create training and test sets
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  truth<-test$AT_RISK
+  
+  ## train model on training set
+  fit<-glm(AT_RISK == "TRUE" ~ ONEOFF + INSTALLMENTS + CASH_ADVANCE + BAL_FREQ + PURCH_FREQ + ONEOFF_FREQ + INSTALL_FREQ + CASHADV_FREQ + MIN_PAY + PRC_FULL_PAYMENT, data = train, family = "binomial")
+  probs<-predict(fit,newdata = test,type="response")
+  
+  ## test model on test set (save all k results)
+  diags<-rbind(diags,class_diag(probs,truth, positive="TRUE"))
+}
+summarize_all(diags,mean) # AUC: 0.9427
+
+```
+
+For my classifier methods, I used "AT_RISK" as my response variable and the following variables as my predictors: ONEOFF, INSTALLMENTS,  CASH_ADVANCE, BAL_FREQ, PURCH_FREQ, ONEOFF_FREQ, INSTALL_FREQ,  CASHADV_FREQ, MIN_PAY, and PRC_FULL_PAYMENT. Logistic regression had an area under the curve (AUC) value of 0.9435, indicating that its predictive performance was very good. The confusion matrix also found that the logistic model could correctly classify AT_RISK (low credit score individuals) about 89.6% of the time, and non-risk individuals 84.2% of the time. Overall precision was about 85%.  The AUC value for cross-validation (CV) was 0.9427; since this was only slightly lower than the original AUC value, the model did not appear to show signs of overfitting.  
+
+### Non-Parametric Classifier
+
+```{R}
+library(caret)
+
+knn_fit <- knn3(AT_RISK == "TRUE" ~ ONEOFF + INSTALLMENTS + CASH_ADVANCE + BAL_FREQ + PURCH_FREQ + ONEOFF_FREQ + INSTALL_FREQ + CASHADV_FREQ + MIN_PAY + PRC_FULL_PAYMENT, data=ccdata, k=10)
+
+y_hat_knn <- predict(knn_fit, ccdata)
+
+class_diag(y_hat_knn[,2], ccdata$AT_RISK, positive="TRUE") # AUC: 0.9475
+
+# confusion matrix
+table(actual = ccdata$AT_RISK, predicted = y_hat_knn[,2] > .5) %>% addmargins
+
+TNR <- 1840 / 2128 # 0.865 (Specificity)
+FP <- 1 - TNR       # 0.135
+TPR <- 2058 / 2347 # 0.877 (Sensitivity / Recall)
+FN <- 1 - TPR       # 0.123
+
+# Positive Predictive Value (PPV) / Precision
+PPV <- TPR / (TPR + FP)
+PPV #0.866
+
+
+```
+
+```{R}
+# k-fold CV on the same model 
+k=10 
+data<-ccdata[sample(nrow(ccdata)),] 
+folds<-cut(seq(1:nrow(ccdata)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  truth<-test$AT_RISK
+  
+  fit<-knn3(AT_RISK == "TRUE" ~ ONEOFF + INSTALLMENTS + CASH_ADVANCE + BAL_FREQ + PURCH_FREQ + ONEOFF_FREQ + INSTALL_FREQ + CASHADV_FREQ + MIN_PAY + PRC_FULL_PAYMENT, data=train)
+  probs<-predict(fit,newdata = test)[,2]
+  
+  diags<-rbind(diags,class_diag(probs,truth, positive="TRUE"))
+}
+summarize_all(diags,mean) # AUC: 0.9012
+
+```
+
+For my nonparametric model, I used k-nearest-neighbors (KNN).  This method returned an AUC value of 0.9475, indicating good predictive performance. However, for its cross-validation, the AUC value was 0.9012, a noticeable decrease and potential result of overfitting. It appeared that the logistic method (linear classifier) had a better CV performance than kNN.   
+
+
+### Regression/Numeric Prediction
+
+```{R}
+# Fit a linear regression model or regression tree to your entire dataset, predicting one of your numeric variables from at least 2 other variables
+fit <- lm(AT_RISK == "TRUE" ~ ONEOFF + INSTALLMENTS + CASH_ADVANCE + BAL_FREQ + PURCH_FREQ + ONEOFF_FREQ + INSTALL_FREQ + CASHADV_FREQ + MIN_PAY + PRC_FULL_PAYMENT, data=ccdata)
+probs <- predict(fit)
+class_diag(probs, ccdata$AT_RISK, positive="TRUE") # AUC: 0.9035
+
+lm_summary <- summary(fit)
+
+# calculate MSE for the overall dataset
+mean(lm_summary$residuals^2)
+```
+
+```{R}
+k=10 
+data<-ccdata[sample(nrow(ccdata)),] 
+folds<-cut(seq(1:nrow(ccdata)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  truth<-test$AT_RISK
+  
+  fit<-lm(AT_RISK == "TRUE" ~ ONEOFF + INSTALLMENTS + CASH_ADVANCE + BAL_FREQ + PURCH_FREQ + ONEOFF_FREQ + INSTALL_FREQ + CASHADV_FREQ + MIN_PAY + PRC_FULL_PAYMENT, data=train)
+  probs<-predict(fit,newdata = test)
+  
+  diags<-rbind(diags,class_diag(probs,truth, positive="TRUE"))
+}
+summarize_all(diags,mean) # AUC: 0.9027
+
+```
+
+The dataset overall had a mean standard error (MSE) of 0.1372.  The linear regression had an AUC of 0.9035 and the cross-validation reported an AUC of 0.9027; this was only a slight decrease, so overfitting was unlikely, but overall this classifier method exhibited the weakest predictive performance.  
+
+
+
+
+
+
+
