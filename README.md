@@ -15,14 +15,16 @@ Feel free to explore my work!
 * `SDS322E Final: Credit Card Data Analysis`
 * `SDS375 Final: Transit Cost Data Analysis` 
 
-[**Tableau:**](https://github.com/ldchu/Data-Projects/tree/main/Tableau)
-* `Design Research Project in Digital Learning: Tableau`
-* `Dell Data Hackathon: COVID Impact on Greater Austin`
-
 [**SPSS:**](https://github.com/ldchu/Data-Projects/tree/main/SPSS)
 * `Behavior-Based Segmentation: An Analysis of the Food Delivery Market`
 * `Proclivity Modeling for Hypertension`
 
 [**SQL:**](https://github.com/ldchu/Data-Projects/tree/main/SQL)
 * `ETL Data Warehouse for Hypothetical Content Creator Site`
+
+[**Tableau:**](https://github.com/ldchu/Data-Projects/tree/main/Tableau)
+* `Design Research Project in Digital Learning: Tableau`
+* `Dell Data Hackathon: COVID Impact on Greater Austin`
+
+
 
