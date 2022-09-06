@@ -1,7 +1,8 @@
-# Welome to my Data Portfolio!
-*Created by Lindsay Chu*
+# Welome!
 
-While studying at The University of Texas at Austin, I completed courses in Marketing, Management Information Systems, and Statistical Modeling.  This repository houses all of my data science projects, which I have categorized by software used.  
+![my data portfolio - tentative banner](https://user-images.githubusercontent.com/80167460/188694292-b2440969-71c3-4ebf-93bc-992c89773fb6.png)
+
+This repository houses all of my data science projects, which I have categorized by software used.  
 
 Feel free to explore my work!
  
