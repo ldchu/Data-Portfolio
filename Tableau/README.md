@@ -16,7 +16,7 @@ While the hackathon was in October 2020, the visualization was republished in Ma
 From January to June 2021, I served as a data analyst for UT's School of Design and Creative Technologies (SDCTx).  I assisted in a design research project focused on understanding how Texas Universities transitioned their curriculums to online platforms during COVID-19.
 
 To help contact faculty members to interview about their virtual work experiences, and to determine whether or not online educational performance varied across different kinds of univesities (i.e. 2-year vs. 4-year schools, and public vs. private vs. community), I executed the following:
-* built an Excel database of 190 universities (link [here](Excel/README.md)).
+* built an Excel database of 190 universities
 * acquired info of over 200 faculty members
 * obtained data from course evaluation reports, university news articles, and Texas Higher Education almanacs
 After pivoting data on Excel, I also created a Tableau viz to summarize my findings.  
