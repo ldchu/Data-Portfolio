@@ -1,6 +1,5 @@
 # Welome to my Data Portfolio!
 
-![my data portfolio - tentative banner](https://user-images.githubusercontent.com/80167460/188694292-b2440969-71c3-4ebf-93bc-992c89773fb6.png)
 
 This repository houses all of my data science projects, which I have categorized by software used.  
 
